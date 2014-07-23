@@ -7,7 +7,6 @@
  * Copyright (C) 1999, 2000, 04 Ralf Baechle (ralf@linux-mips.org)
  * Copyright (C) 1999, 2000 Silicon Graphics, Inc.
  */
-#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/export.h>
 #include <linux/pci.h>
@@ -42,7 +41,7 @@ int irq_to_slot[MAX_PCI_BUSSES * MAX_DEVICES_PER_PCIBUS];
 
 extern struct pci_ops bridge_pci_ops;
 
-int __cpuinit bridge_probe(nasid_t nasid, int widget_id, int masterwid)
+int bridge_probe(nasid_t nasid, int widget_id, int masterwid)
 {
 	unsigned long offset = NODE_OFFSET(nasid);
 	struct bridge_controller *bc;

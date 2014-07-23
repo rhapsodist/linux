@@ -22,6 +22,12 @@
  *
  */
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+
+#define pr_fmt(fmt) "FS-Cache: " fmt
+
 #include <linux/fscache-cache.h>
 #include <linux/sched.h>
 
@@ -130,6 +136,12 @@ extern void fscache_operation_gc(struct work_struct *);
 /*
  * page.c
  */
+extern int fscache_wait_for_deferred_lookup(struct fscache_cookie *);
+extern int fscache_wait_for_operation_activation(struct fscache_object *,
+						 struct fscache_operation *,
+						 atomic_t *,
+						 atomic_t *,
+						 void (*)(struct fscache_operation *));
 extern void fscache_invalidate_writes(struct fscache_cookie *);
 
 /*
@@ -407,8 +419,8 @@ do {						\
 #define ASSERT(X)							\
 do {									\
 	if (unlikely(!(X))) {						\
-		printk(KERN_ERR "\n");					\
-		printk(KERN_ERR "FS-Cache: Assertion failed\n");	\
+		pr_err("\n");					\
+		pr_err("Assertion failed\n");	\
 		BUG();							\
 	}								\
 } while (0)
@@ -416,9 +428,9 @@ do {									\
 #define ASSERTCMP(X, OP, Y)						\
 do {									\
 	if (unlikely(!((X) OP (Y)))) {					\
-		printk(KERN_ERR "\n");					\
-		printk(KERN_ERR "FS-Cache: Assertion failed\n");	\
-		printk(KERN_ERR "%lx " #OP " %lx is false\n",		\
+		pr_err("\n");					\
+		pr_err("Assertion failed\n");	\
+		pr_err("%lx " #OP " %lx is false\n",		\
 		       (unsigned long)(X), (unsigned long)(Y));		\
 		BUG();							\
 	}								\
@@ -427,8 +439,8 @@ do {									\
 #define ASSERTIF(C, X)							\
 do {									\
 	if (unlikely((C) && !(X))) {					\
-		printk(KERN_ERR "\n");					\
-		printk(KERN_ERR "FS-Cache: Assertion failed\n");	\
+		pr_err("\n");					\
+		pr_err("Assertion failed\n");	\
 		BUG();							\
 	}								\
 } while (0)
@@ -436,9 +448,9 @@ do {									\
 #define ASSERTIFCMP(C, X, OP, Y)					\
 do {									\
 	if (unlikely((C) && !((X) OP (Y)))) {				\
-		printk(KERN_ERR "\n");					\
-		printk(KERN_ERR "FS-Cache: Assertion failed\n");	\
-		printk(KERN_ERR "%lx " #OP " %lx is false\n",		\
+		pr_err("\n");					\
+		pr_err("Assertion failed\n");	\
+		pr_err("%lx " #OP " %lx is false\n",		\
 		       (unsigned long)(X), (unsigned long)(Y));		\
 		BUG();							\
 	}								\

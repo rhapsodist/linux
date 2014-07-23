@@ -240,8 +240,7 @@ __setup("int_pln_enable", int_pln_enable_setup);
 
 #ifdef CONFIG_SYSFS
 /* Add/Remove thermal_throttle interface for CPU device: */
-static __cpuinit int thermal_throttle_add_dev(struct device *dev,
-				unsigned int cpu)
+static int thermal_throttle_add_dev(struct device *dev, unsigned int cpu)
 {
 	int err;
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
@@ -267,16 +266,13 @@ static __cpuinit int thermal_throttle_add_dev(struct device *dev,
 	return err;
 }
 
-static __cpuinit void thermal_throttle_remove_dev(struct device *dev)
+static void thermal_throttle_remove_dev(struct device *dev)
 {
 	sysfs_remove_group(&dev->kobj, &thermal_attr_group);
 }
 
-/* Mutex protecting device creation against CPU hotplug: */
-static DEFINE_MUTEX(therm_cpu_lock);
-
 /* Get notified when a cpu comes on/off. Be hotplug friendly. */
-static __cpuinit int
+static int
 thermal_throttle_cpu_callback(struct notifier_block *nfb,
 			      unsigned long action,
 			      void *hcpu)
@@ -290,24 +286,20 @@ thermal_throttle_cpu_callback(struct notifier_block *nfb,
 	switch (action) {
 	case CPU_UP_PREPARE:
 	case CPU_UP_PREPARE_FROZEN:
-		mutex_lock(&therm_cpu_lock);
 		err = thermal_throttle_add_dev(dev, cpu);
-		mutex_unlock(&therm_cpu_lock);
 		WARN_ON(err);
 		break;
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
-		mutex_lock(&therm_cpu_lock);
 		thermal_throttle_remove_dev(dev);
-		mutex_unlock(&therm_cpu_lock);
 		break;
 	}
 	return notifier_from_errno(err);
 }
 
-static struct notifier_block thermal_throttle_cpu_notifier __cpuinitdata =
+static struct notifier_block thermal_throttle_cpu_notifier =
 {
 	.notifier_call = thermal_throttle_cpu_callback,
 };
@@ -320,19 +312,16 @@ static __init int thermal_throttle_init_device(void)
 	if (!atomic_read(&therm_throt_en))
 		return 0;
 
-	register_hotcpu_notifier(&thermal_throttle_cpu_notifier);
+	cpu_notifier_register_begin();
 
-#ifdef CONFIG_HOTPLUG_CPU
-	mutex_lock(&therm_cpu_lock);
-#endif
 	/* connect live CPUs to sysfs */
 	for_each_online_cpu(cpu) {
 		err = thermal_throttle_add_dev(get_cpu_device(cpu), cpu);
 		WARN_ON(err);
 	}
-#ifdef CONFIG_HOTPLUG_CPU
-	mutex_unlock(&therm_cpu_lock);
-#endif
+
+	__register_hotcpu_notifier(&thermal_throttle_cpu_notifier);
+	cpu_notifier_register_done();
 
 	return 0;
 }
@@ -440,14 +429,14 @@ static inline void __smp_thermal_interrupt(void)
 	smp_thermal_vector();
 }
 
-asmlinkage void smp_thermal_interrupt(struct pt_regs *regs)
+asmlinkage __visible void smp_thermal_interrupt(struct pt_regs *regs)
 {
 	entering_irq();
 	__smp_thermal_interrupt();
 	exiting_ack_irq();
 }
 
-asmlinkage void smp_trace_thermal_interrupt(struct pt_regs *regs)
+asmlinkage __visible void smp_trace_thermal_interrupt(struct pt_regs *regs)
 {
 	entering_irq();
 	trace_thermal_apic_entry(THERMAL_APIC_VECTOR);

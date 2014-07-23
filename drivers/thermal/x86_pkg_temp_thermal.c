@@ -54,6 +54,8 @@ MODULE_PARM_DESC(notify_delay_ms,
 * is some wrong values returned by cpuid for number of thresholds.
 */
 #define MAX_NUMBER_OF_TRIPS	2
+/* Limit number of package temp zones */
+#define MAX_PKG_TEMP_ZONE_IDS	256
 
 struct phy_dev_entry {
 	struct list_head list;
@@ -64,6 +66,10 @@ struct phy_dev_entry {
 	u32 start_pkg_therm_low;
 	u32 start_pkg_therm_high;
 	struct thermal_zone_device *tzone;
+};
+
+static const struct thermal_zone_params pkg_temp_tz_params = {
+	.no_hwmon	= true,
 };
 
 /* List maintaining number of package instances */
@@ -213,7 +219,7 @@ static int sys_get_trip_temp(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-int sys_set_trip_temp(struct thermal_zone_device *tzd, int trip,
+static int sys_set_trip_temp(struct thermal_zone_device *tzd, int trip,
 							unsigned long temp)
 {
 	u32 l, h;
@@ -314,18 +320,19 @@ static void pkg_temp_thermal_threshold_work_fn(struct work_struct *work)
 	int phy_id = topology_physical_package_id(cpu);
 	struct phy_dev_entry *phdev = pkg_temp_thermal_get_phy_entry(cpu);
 	bool notify = false;
+	unsigned long flags;
 
 	if (!phdev)
 		return;
 
-	spin_lock(&pkg_work_lock);
+	spin_lock_irqsave(&pkg_work_lock, flags);
 	++pkg_work_cnt;
 	if (unlikely(phy_id > max_phy_id)) {
-		spin_unlock(&pkg_work_lock);
+		spin_unlock_irqrestore(&pkg_work_lock, flags);
 		return;
 	}
 	pkg_work_scheduled[phy_id] = 0;
-	spin_unlock(&pkg_work_lock);
+	spin_unlock_irqrestore(&pkg_work_lock, flags);
 
 	enable_pkg_thres_interrupt();
 	rdmsrl(MSR_IA32_PACKAGE_THERM_STATUS, msr_val);
@@ -391,13 +398,17 @@ static int pkg_temp_thermal_device_add(unsigned int cpu)
 	int err;
 	u32 tj_max;
 	struct phy_dev_entry *phy_dev_entry;
-	char buffer[30];
 	int thres_count;
 	u32 eax, ebx, ecx, edx;
+	u8 *temp;
+	unsigned long flags;
 
 	cpuid(6, &eax, &ebx, &ecx, &edx);
 	thres_count = ebx & 0x07;
 	if (!thres_count)
+		return -ENODEV;
+
+	if (topology_physical_package_id(cpu) > MAX_PKG_TEMP_ZONE_IDS)
 		return -ENODEV;
 
 	thres_count = clamp_val(thres_count, 0, MAX_NUMBER_OF_TRIPS);
@@ -414,30 +425,29 @@ static int pkg_temp_thermal_device_add(unsigned int cpu)
 		goto err_ret_unlock;
 	}
 
-	spin_lock(&pkg_work_lock);
+	spin_lock_irqsave(&pkg_work_lock, flags);
 	if (topology_physical_package_id(cpu) > max_phy_id)
 		max_phy_id = topology_physical_package_id(cpu);
-	pkg_work_scheduled = krealloc(pkg_work_scheduled,
-				(max_phy_id+1) * sizeof(u8), GFP_ATOMIC);
-	if (!pkg_work_scheduled) {
-		spin_unlock(&pkg_work_lock);
+	temp = krealloc(pkg_work_scheduled,
+			(max_phy_id+1) * sizeof(u8), GFP_ATOMIC);
+	if (!temp) {
+		spin_unlock_irqrestore(&pkg_work_lock, flags);
 		err = -ENOMEM;
 		goto err_ret_free;
 	}
+	pkg_work_scheduled = temp;
 	pkg_work_scheduled[topology_physical_package_id(cpu)] = 0;
-	spin_unlock(&pkg_work_lock);
+	spin_unlock_irqrestore(&pkg_work_lock, flags);
 
 	phy_dev_entry->phys_proc_id = topology_physical_package_id(cpu);
 	phy_dev_entry->first_cpu = cpu;
 	phy_dev_entry->tj_max = tj_max;
 	phy_dev_entry->ref_cnt = 1;
-	snprintf(buffer, sizeof(buffer), "pkg-temp-%d\n",
-					phy_dev_entry->phys_proc_id);
-	phy_dev_entry->tzone = thermal_zone_device_register(buffer,
+	phy_dev_entry->tzone = thermal_zone_device_register("x86_pkg_temp",
 			thres_count,
 			(thres_count == MAX_NUMBER_OF_TRIPS) ?
 				0x03 : 0x01,
-			phy_dev_entry, &tzone_ops, NULL, 0, 0);
+			phy_dev_entry, &tzone_ops, &pkg_temp_tz_params, 0, 0);
 	if (IS_ERR(phy_dev_entry->tzone)) {
 		err = PTR_ERR(phy_dev_entry->tzone);
 		goto err_ret_free;
@@ -511,7 +521,7 @@ static int get_core_online(unsigned int cpu)
 
 	/* Check if there is already an instance for this package */
 	if (!phdev) {
-		if (!cpu_has(c, X86_FEATURE_DTHERM) &&
+		if (!cpu_has(c, X86_FEATURE_DTHERM) ||
 					!cpu_has(c, X86_FEATURE_PTS))
 			return -ENODEV;
 		if (pkg_temp_thermal_device_add(cpu))
@@ -562,7 +572,7 @@ static struct notifier_block pkg_temp_thermal_notifier __refdata = {
 };
 
 static const struct x86_cpu_id __initconst pkg_temp_thermal_ids[] = {
-	{ X86_VENDOR_INTEL, X86_FAMILY_ANY, X86_MODEL_ANY, X86_FEATURE_DTHERM },
+	{ X86_VENDOR_INTEL, X86_FAMILY_ANY, X86_MODEL_ANY, X86_FEATURE_PTS },
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, pkg_temp_thermal_ids);
@@ -580,22 +590,21 @@ static int __init pkg_temp_thermal_init(void)
 	platform_thermal_package_rate_control =
 			pkg_temp_thermal_platform_thermal_rate_control;
 
-	get_online_cpus();
+	cpu_notifier_register_begin();
 	for_each_online_cpu(i)
 		if (get_core_online(i))
 			goto err_ret;
-	register_hotcpu_notifier(&pkg_temp_thermal_notifier);
-	put_online_cpus();
+	__register_hotcpu_notifier(&pkg_temp_thermal_notifier);
+	cpu_notifier_register_done();
 
 	pkg_temp_debugfs_init(); /* Don't care if fails */
 
 	return 0;
 
 err_ret:
-	get_online_cpus();
 	for_each_online_cpu(i)
 		put_core_offline(i);
-	put_online_cpus();
+	cpu_notifier_register_done();
 	kfree(pkg_work_scheduled);
 	platform_thermal_package_notify = NULL;
 	platform_thermal_package_rate_control = NULL;
@@ -608,8 +617,8 @@ static void __exit pkg_temp_thermal_exit(void)
 	struct phy_dev_entry *phdev, *n;
 	int i;
 
-	get_online_cpus();
-	unregister_hotcpu_notifier(&pkg_temp_thermal_notifier);
+	cpu_notifier_register_begin();
+	__unregister_hotcpu_notifier(&pkg_temp_thermal_notifier);
 	mutex_lock(&phy_dev_list_mutex);
 	list_for_each_entry_safe(phdev, n, &phy_dev_list, list) {
 		/* Retore old MSR value for package thermal interrupt */
@@ -627,7 +636,7 @@ static void __exit pkg_temp_thermal_exit(void)
 	for_each_online_cpu(i)
 		cancel_delayed_work_sync(
 			&per_cpu(pkg_temp_thermal_threshold_work, i));
-	put_online_cpus();
+	cpu_notifier_register_done();
 
 	kfree(pkg_work_scheduled);
 

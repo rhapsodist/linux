@@ -32,7 +32,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/threads.h>
 
@@ -49,7 +48,7 @@
 #include <asm/netlogic/xlr/iomap.h>
 #include <asm/netlogic/xlr/pic.h>
 
-int __cpuinit xlr_wakeup_secondary_cpus(void)
+int xlr_wakeup_secondary_cpus(void)
 {
 	struct nlm_soc_info *nodep;
 	unsigned int i, j, boot_cpu;
@@ -70,7 +69,7 @@ int __cpuinit xlr_wakeup_secondary_cpus(void)
 
 	/* Fill up the coremask early */
 	nodep->coremask = 1;
-	for (i = 1; i < NLM_CORES_PER_NODE; i++) {
+	for (i = 1; i < nlm_cores_per_node(); i++) {
 		for (j = 1000000; j > 0; j--) {
 			if (cpu_ready[i * NLM_THREADS_PER_CORE])
 				break;

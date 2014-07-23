@@ -53,6 +53,11 @@
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h>
 
+#ifndef HAVE_LIBCFS_CPT
+/* Need this for cfs_cpt_table */
+#include <linux/libcfs/libcfs_cpu.h>
+#endif
+
 #define CFS_PAGE_MASK		   (~((__u64)PAGE_CACHE_SIZE-1))
 #define page_index(p)       ((p)->index)
 
@@ -63,9 +68,9 @@
 #if BITS_PER_LONG == 32
 /* limit to lowmem on 32-bit systems */
 #define NUM_CACHEPAGES \
-	min(num_physpages, 1UL << (30 - PAGE_CACHE_SHIFT) * 3 / 4)
+	min(totalram_pages, 1UL << (30 - PAGE_CACHE_SHIFT) * 3 / 4)
 #else
-#define NUM_CACHEPAGES num_physpages
+#define NUM_CACHEPAGES totalram_pages
 #endif
 
 /*
@@ -78,43 +83,5 @@
 #define MMSPACE_OPEN \
 	do { __oldfs = get_fs(); set_fs(get_ds());} while(0)
 #define MMSPACE_CLOSE	       set_fs(__oldfs)
-
-/*
- * Shrinker
- */
-
-# define SHRINKER_ARGS(sc, nr_to_scan, gfp_mask)  \
-		       struct shrinker *shrinker, \
-		       struct shrink_control *sc
-# define shrink_param(sc, var) ((sc)->var)
-
-typedef int (*shrinker_t)(SHRINKER_ARGS(sc, nr_to_scan, gfp_mask));
-
-static inline
-struct shrinker *set_shrinker(int seek, shrinker_t func)
-{
-	struct shrinker *s;
-
-	s = kmalloc(sizeof(*s), GFP_KERNEL);
-	if (s == NULL)
-		return (NULL);
-
-	s->shrink = func;
-	s->seeks = seek;
-
-	register_shrinker(s);
-
-	return s;
-}
-
-static inline
-void remove_shrinker(struct shrinker *shrinker)
-{
-	if (shrinker == NULL)
-		return;
-
-	unregister_shrinker(shrinker);
-	kfree(shrinker);
-}
 
 #endif /* __LINUX_CFS_MEM_H__ */

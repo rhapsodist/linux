@@ -28,7 +28,11 @@ static unsigned int sdhci_sirf_get_max_clk(struct sdhci_host *host)
 }
 
 static struct sdhci_ops sdhci_sirf_ops = {
+	.set_clock = sdhci_set_clock,
 	.get_max_clock	= sdhci_sirf_get_max_clk,
+	.set_bus_width = sdhci_set_bus_width,
+	.reset = sdhci_reset,
+	.set_uhs_signaling = sdhci_set_uhs_signaling,
 };
 
 static struct sdhci_pltfm_data sdhci_sirf_pdata = {
@@ -84,7 +88,7 @@ static int sdhci_sirf_probe(struct platform_device *pdev)
 	 * gets setup in sdhci_add_host() and we oops.
 	 */
 	if (gpio_is_valid(priv->gpio_cd)) {
-		ret = mmc_gpio_request_cd(host->mmc, priv->gpio_cd);
+		ret = mmc_gpio_request_cd(host->mmc, priv->gpio_cd, 0);
 		if (ret) {
 			dev_err(&pdev->dev, "card detect irq request failed: %d\n",
 				ret);

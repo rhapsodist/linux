@@ -22,7 +22,7 @@
 
 MODULE_DESCRIPTION("FUSB300  USB gadget driver");
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Yuan Hsin Chen <yhchen@faraday-tech.com>");
+MODULE_AUTHOR("Yuan-Hsin Chen, Feng-Hsin Chiang <john453@faraday-tech.com>");
 MODULE_ALIAS("platform:fusb300_udc");
 
 #define DRIVER_VERSION	"20 October 2010"
@@ -557,7 +557,7 @@ static void fusb300_set_cxdone(struct fusb300 *fusb300)
 }
 
 /* read data from cx fifo */
-void fusb300_rdcxf(struct fusb300 *fusb300,
+static void fusb300_rdcxf(struct fusb300 *fusb300,
 		   u8 *buffer, u32 length)
 {
 	int i = 0;
@@ -1400,17 +1400,13 @@ static int __init fusb300_probe(struct platform_device *pdev)
 
 	/* initialize udc */
 	fusb300 = kzalloc(sizeof(struct fusb300), GFP_KERNEL);
-	if (fusb300 == NULL) {
-		pr_err("kzalloc error\n");
+	if (fusb300 == NULL)
 		goto clean_up;
-	}
 
 	for (i = 0; i < FUSB300_MAX_NUM_EP; i++) {
 		_ep[i] = kzalloc(sizeof(struct fusb300_ep), GFP_KERNEL);
-		if (_ep[i] == NULL) {
-			pr_err("_ep kzalloc error\n");
+		if (_ep[i] == NULL)
 			goto clean_up;
-		}
 		fusb300->ep[i] = _ep[i];
 	}
 
@@ -1452,9 +1448,9 @@ static int __init fusb300_probe(struct platform_device *pdev)
 		INIT_LIST_HEAD(&ep->queue);
 		ep->ep.name = fusb300_ep_name[i];
 		ep->ep.ops = &fusb300_ep_ops;
-		ep->ep.maxpacket = HS_BULK_MAX_PACKET_SIZE;
+		usb_ep_set_maxpacket_limit(&ep->ep, HS_BULK_MAX_PACKET_SIZE);
 	}
-	fusb300->ep[0]->ep.maxpacket = HS_CTL_MAX_PACKET_SIZE;
+	usb_ep_set_maxpacket_limit(&fusb300->ep[0]->ep, HS_CTL_MAX_PACKET_SIZE);
 	fusb300->ep[0]->epnum = 0;
 	fusb300->gadget.ep0 = &fusb300->ep[0]->ep;
 	INIT_LIST_HEAD(&fusb300->gadget.ep0->ep_list);

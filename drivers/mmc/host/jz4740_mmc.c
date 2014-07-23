@@ -515,10 +515,13 @@ static irqreturn_t jz_mmc_irq_worker(int irq, void *devid)
 
 		jz4740_mmc_send_command(host, req->stop);
 
-		timeout = jz4740_mmc_poll_irq(host, JZ_MMC_IRQ_PRG_DONE);
-		if (timeout) {
-			host->state = JZ4740_MMC_STATE_DONE;
-			break;
+		if (mmc_resp_type(req->stop) & MMC_RSP_BUSY) {
+			timeout = jz4740_mmc_poll_irq(host,
+						      JZ_MMC_IRQ_PRG_DONE);
+			if (timeout) {
+				host->state = JZ4740_MMC_STATE_DONE;
+				break;
+			}
 		}
 	case JZ4740_MMC_STATE_DONE:
 		break;
@@ -713,7 +716,7 @@ static int jz4740_mmc_request_gpios(struct mmc_host *mmc,
 		mmc->caps2 |= MMC_CAP2_RO_ACTIVE_HIGH;
 
 	if (gpio_is_valid(pdata->gpio_card_detect)) {
-		ret = mmc_gpio_request_cd(mmc, pdata->gpio_card_detect);
+		ret = mmc_gpio_request_cd(mmc, pdata->gpio_card_detect, 0);
 		if (ret)
 			return ret;
 	}
@@ -783,9 +786,8 @@ static int jz4740_mmc_probe(struct platform_device* pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	host->base = devm_ioremap_resource(&pdev->dev, res);
-	if (!host->base) {
-		ret = -EBUSY;
-		dev_err(&pdev->dev, "Failed to ioremap base memory\n");
+	if (IS_ERR(host->base)) {
+		ret = PTR_ERR(host->base);
 		goto err_free_host;
 	}
 
@@ -881,8 +883,6 @@ static int jz4740_mmc_suspend(struct device *dev)
 {
 	struct jz4740_mmc_host *host = dev_get_drvdata(dev);
 
-	mmc_suspend_host(host->mmc);
-
 	jz_gpio_bulk_suspend(jz4740_mmc_pins, jz4740_mmc_num_pins(host));
 
 	return 0;
@@ -893,8 +893,6 @@ static int jz4740_mmc_resume(struct device *dev)
 	struct jz4740_mmc_host *host = dev_get_drvdata(dev);
 
 	jz_gpio_bulk_resume(jz4740_mmc_pins, jz4740_mmc_num_pins(host));
-
-	mmc_resume_host(host->mmc);
 
 	return 0;
 }

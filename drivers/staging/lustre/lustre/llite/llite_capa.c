@@ -41,7 +41,6 @@
 #define DEBUG_SUBSYSTEM S_LLITE
 
 #include <linux/fs.h>
-#include <linux/version.h>
 #include <asm/uaccess.h>
 #include <linux/file.h>
 #include <linux/kmod.h>
@@ -68,6 +67,8 @@ static unsigned long long ll_capa_renewed = 0;
 static unsigned long long ll_capa_renewal_noent = 0;
 static unsigned long long ll_capa_renewal_failed = 0;
 static unsigned long long ll_capa_renewal_retries = 0;
+
+static int ll_update_capa(struct obd_capa *ocapa, struct lustre_capa *capa);
 
 static inline void update_capa_timer(struct obd_capa *ocapa, cfs_time_t expiry)
 {
@@ -171,7 +172,6 @@ static int capa_thread_main(void *unused)
 	struct inode *inode = NULL;
 	struct l_wait_info lwi = { 0 };
 	int rc;
-	ENTRY;
 
 	thread_set_flags(&ll_capa_thread, SVC_RUNNING);
 	wake_up(&ll_capa_thread.t_ctl_waitq);
@@ -281,7 +281,7 @@ static int capa_thread_main(void *unused)
 
 	thread_set_flags(&ll_capa_thread, SVC_STOPPED);
 	wake_up(&ll_capa_thread.t_ctl_waitq);
-	RETURN(0);
+	return 0;
 }
 
 void ll_capa_timer_callback(unsigned long unused)
@@ -291,8 +291,7 @@ void ll_capa_timer_callback(unsigned long unused)
 
 int ll_capa_thread_start(void)
 {
-	task_t *task;
-	ENTRY;
+	struct task_struct *task;
 
 	init_waitqueue_head(&ll_capa_thread.t_ctl_waitq);
 
@@ -300,12 +299,12 @@ int ll_capa_thread_start(void)
 	if (IS_ERR(task)) {
 		CERROR("cannot start expired capa thread: rc %ld\n",
 			PTR_ERR(task));
-		RETURN(PTR_ERR(task));
+		return PTR_ERR(task);
 	}
 	wait_event(ll_capa_thread.t_ctl_waitq,
 		       thread_is_running(&ll_capa_thread));
 
-	RETURN(0);
+	return 0;
 }
 
 void ll_capa_thread_stop(void)
@@ -322,10 +321,8 @@ struct obd_capa *ll_osscapa_get(struct inode *inode, __u64 opc)
 	struct obd_capa *ocapa;
 	int found = 0;
 
-	ENTRY;
-
 	if ((ll_i2sbi(inode)->ll_flags & LL_SBI_OSS_CAPA) == 0)
-		RETURN(NULL);
+		return NULL;
 
 	LASSERT(opc == CAPA_OPC_OSS_WRITE || opc == CAPA_OPC_OSS_RW ||
 		opc == CAPA_OPC_OSS_TRUNC);
@@ -369,7 +366,7 @@ struct obd_capa *ll_osscapa_get(struct inode *inode, __u64 opc)
 	}
 	spin_unlock(&capa_lock);
 
-	RETURN(ocapa);
+	return ocapa;
 }
 EXPORT_SYMBOL(ll_osscapa_get);
 
@@ -377,12 +374,11 @@ struct obd_capa *ll_mdscapa_get(struct inode *inode)
 {
 	struct ll_inode_info *lli = ll_i2info(inode);
 	struct obd_capa *ocapa;
-	ENTRY;
 
 	LASSERT(inode != NULL);
 
 	if ((ll_i2sbi(inode)->ll_flags & LL_SBI_MDS_CAPA) == 0)
-		RETURN(NULL);
+		return NULL;
 
 	spin_lock(&capa_lock);
 	ocapa = capa_get(lli->lli_mds_capa);
@@ -392,7 +388,7 @@ struct obd_capa *ll_mdscapa_get(struct inode *inode)
 		atomic_set(&ll_capa_debug, 0);
 	}
 
-	RETURN(ocapa);
+	return ocapa;
 }
 
 static struct obd_capa *do_add_mds_capa(struct inode *inode,
@@ -521,11 +517,10 @@ static inline void delay_capa_renew(struct obd_capa *oc, cfs_time_t delay)
 	oc->c_expiry = cfs_time_add(oc->c_expiry, cfs_time_seconds(delay));
 }
 
-int ll_update_capa(struct obd_capa *ocapa, struct lustre_capa *capa)
+static int ll_update_capa(struct obd_capa *ocapa, struct lustre_capa *capa)
 {
 	struct inode *inode = ocapa->u.cli.inode;
 	int rc = 0;
-	ENTRY;
 
 	LASSERT(ocapa);
 
@@ -561,7 +556,7 @@ int ll_update_capa(struct obd_capa *ocapa, struct lustre_capa *capa)
 
 		capa_put(ocapa);
 		iput(inode);
-		RETURN(rc);
+		return rc;
 	}
 
 	spin_lock(&ocapa->c_lock);
@@ -575,7 +570,6 @@ int ll_update_capa(struct obd_capa *ocapa, struct lustre_capa *capa)
 	if (capa_for_oss(capa))
 		inode_add_oss_capa(inode, ocapa);
 	DEBUG_CAPA(D_SEC, capa, "renew");
-	EXIT;
 retry:
 	list_del_init(&ocapa->c_list);
 	sort_add_capa(ocapa, ll_capa_list);

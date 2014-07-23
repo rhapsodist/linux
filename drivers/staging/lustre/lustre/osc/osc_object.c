@@ -191,10 +191,9 @@ static int osc_object_glimpse(const struct lu_env *env,
 {
 	struct lov_oinfo *oinfo = cl2osc(obj)->oo_oinfo;
 
-	ENTRY;
 	lvb->lvb_size   = oinfo->loi_kms;
 	lvb->lvb_blocks = oinfo->loi_lvb.lvb_blocks;
-	RETURN(0);
+	return 0;
 }
 
 
@@ -261,7 +260,7 @@ struct lu_object *osc_object_alloc(const struct lu_env *env,
 	struct osc_object *osc;
 	struct lu_object  *obj;
 
-	OBD_SLAB_ALLOC_PTR_GFP(osc, osc_object_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(osc, osc_object_kmem, GFP_NOFS);
 	if (osc != NULL) {
 		obj = osc2lu(osc);
 		lu_object_init(obj, NULL, dev);

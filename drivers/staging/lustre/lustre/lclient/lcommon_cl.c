@@ -63,7 +63,7 @@
 
 #include "../llite/llite_internal.h"
 
-const struct cl_req_operations ccc_req_ops;
+static const struct cl_req_operations ccc_req_ops;
 
 /*
  * ccc_ prefix stands for "Common Client Code".
@@ -79,27 +79,27 @@ static struct lu_kmem_descr ccc_caches[] = {
 	{
 		.ckd_cache = &ccc_lock_kmem,
 		.ckd_name  = "ccc_lock_kmem",
-		.ckd_size  = sizeof (struct ccc_lock)
+		.ckd_size  = sizeof(struct ccc_lock)
 	},
 	{
 		.ckd_cache = &ccc_object_kmem,
 		.ckd_name  = "ccc_object_kmem",
-		.ckd_size  = sizeof (struct ccc_object)
+		.ckd_size  = sizeof(struct ccc_object)
 	},
 	{
 		.ckd_cache = &ccc_thread_kmem,
 		.ckd_name  = "ccc_thread_kmem",
-		.ckd_size  = sizeof (struct ccc_thread_info),
+		.ckd_size  = sizeof(struct ccc_thread_info),
 	},
 	{
 		.ckd_cache = &ccc_session_kmem,
 		.ckd_name  = "ccc_session_kmem",
-		.ckd_size  = sizeof (struct ccc_session)
+		.ckd_size  = sizeof(struct ccc_session)
 	},
 	{
 		.ckd_cache = &ccc_req_kmem,
 		.ckd_name  = "ccc_req_kmem",
-		.ckd_size  = sizeof (struct ccc_req)
+		.ckd_size  = sizeof(struct ccc_req)
 	},
 	{
 		.ckd_cache = NULL
@@ -112,12 +112,11 @@ static struct lu_kmem_descr ccc_caches[] = {
  *
  */
 
-void *ccc_key_init(const struct lu_context *ctx,
-			  struct lu_context_key *key)
+void *ccc_key_init(const struct lu_context *ctx, struct lu_context_key *key)
 {
 	struct ccc_thread_info *info;
 
-	OBD_SLAB_ALLOC_PTR_GFP(info, ccc_thread_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(info, ccc_thread_kmem, GFP_NOFS);
 	if (info == NULL)
 		info = ERR_PTR(-ENOMEM);
 	return info;
@@ -135,7 +134,7 @@ void *ccc_session_key_init(const struct lu_context *ctx,
 {
 	struct ccc_session *session;
 
-	OBD_SLAB_ALLOC_PTR_GFP(session, ccc_session_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(session, ccc_session_kmem, GFP_NOFS);
 	if (session == NULL)
 		session = ERR_PTR(-ENOMEM);
 	return session;
@@ -162,14 +161,13 @@ struct lu_context_key ccc_session_key = {
 
 
 /* type constructor/destructor: ccc_type_{init,fini,start,stop}(). */
-// LU_TYPE_INIT_FINI(ccc, &ccc_key, &ccc_session_key);
+/* LU_TYPE_INIT_FINI(ccc, &ccc_key, &ccc_session_key); */
 
 int ccc_device_init(const struct lu_env *env, struct lu_device *d,
 			   const char *name, struct lu_device *next)
 {
 	struct ccc_device  *vdv;
 	int rc;
-	ENTRY;
 
 	vdv = lu2ccc_dev(d);
 	vdv->cdv_next = lu2cl_dev(next);
@@ -182,7 +180,7 @@ int ccc_device_init(const struct lu_env *env, struct lu_device *d,
 		lu_device_get(next);
 		lu_ref_add(&next->ld_reference, "lu-stack", &lu_site_init);
 	}
-	RETURN(rc);
+	return rc;
 }
 
 struct lu_device *ccc_device_fini(const struct lu_env *env,
@@ -201,11 +199,10 @@ struct lu_device *ccc_device_alloc(const struct lu_env *env,
 	struct lu_device  *lud;
 	struct cl_site    *site;
 	int rc;
-	ENTRY;
 
 	OBD_ALLOC_PTR(vdv);
 	if (vdv == NULL)
-		RETURN(ERR_PTR(-ENOMEM));
+		return ERR_PTR(-ENOMEM);
 
 	lud = &vdv->cdv_cl.cd_lu_dev;
 	cl_device_init(&vdv->cdv_cl, t);
@@ -228,7 +225,7 @@ struct lu_device *ccc_device_alloc(const struct lu_env *env,
 		ccc_device_free(env, lud);
 		lud = ERR_PTR(rc);
 	}
-	RETURN(lud);
+	return lud;
 }
 
 struct lu_device *ccc_device_free(const struct lu_env *env,
@@ -253,7 +250,7 @@ int ccc_req_init(const struct lu_env *env, struct cl_device *dev,
 	struct ccc_req *vrq;
 	int result;
 
-	OBD_SLAB_ALLOC_PTR_GFP(vrq, ccc_req_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(vrq, ccc_req_kmem, GFP_NOFS);
 	if (vrq != NULL) {
 		cl_req_slice_add(req, &vrq->crq_cl, dev, &ccc_req_ops);
 		result = 0;
@@ -329,7 +326,7 @@ struct lu_object *ccc_object_alloc(const struct lu_env *env,
 	struct ccc_object *vob;
 	struct lu_object  *obj;
 
-	OBD_SLAB_ALLOC_PTR_GFP(vob, ccc_object_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(vob, ccc_object_kmem, GFP_NOFS);
 	if (vob != NULL) {
 		struct cl_object_header *hdr;
 
@@ -398,7 +395,7 @@ int ccc_lock_init(const struct lu_env *env,
 
 	CLOBINVRNT(env, obj, ccc_object_invariant(obj));
 
-	OBD_SLAB_ALLOC_PTR_GFP(clk, ccc_lock_kmem, __GFP_IO);
+	OBD_SLAB_ALLOC_PTR_GFP(clk, ccc_lock_kmem, GFP_NOFS);
 	if (clk != NULL) {
 		cl_lock_slice_add(lock, &clk->clk_cl, obj, lkops);
 		result = 0;
@@ -418,7 +415,6 @@ int ccc_object_glimpse(const struct lu_env *env,
 {
 	struct inode *inode = ccc_object_inode(obj);
 
-	ENTRY;
 	lvb->lvb_mtime = cl_inode_mtime(inode);
 	lvb->lvb_atime = cl_inode_atime(inode);
 	lvb->lvb_ctime = cl_inode_ctime(inode);
@@ -429,7 +425,7 @@ int ccc_object_glimpse(const struct lu_env *env,
 	 */
 	if (lvb->lvb_size > 0 && lvb->lvb_blocks == 0)
 		lvb->lvb_blocks = dirty_cnt(inode);
-	RETURN(0);
+	return 0;
 }
 
 
@@ -479,8 +475,6 @@ int ccc_page_is_under_lock(const struct lu_env *env,
 
 	int result;
 
-	ENTRY;
-
 	if (io->ci_type == CIT_READ || io->ci_type == CIT_WRITE ||
 	    io->ci_type == CIT_FAULT) {
 		if (cio->cui_fd->fd_flags & LL_FILE_GROUP_LOCKED)
@@ -495,7 +489,7 @@ int ccc_page_is_under_lock(const struct lu_env *env,
 		}
 	} else
 		result = 0;
-	RETURN(result);
+	return result;
 }
 
 int ccc_fail(const struct lu_env *env, const struct cl_page_slice *slice)
@@ -559,9 +553,8 @@ int ccc_transient_page_prep(const struct lu_env *env,
 				   const struct cl_page_slice *slice,
 				   struct cl_io *unused)
 {
-	ENTRY;
 	/* transient page should always be sent. */
-	RETURN(0);
+	return 0;
 }
 
 /*****************************************************************************
@@ -623,7 +616,6 @@ int ccc_lock_fits_into(const struct lu_env *env,
 	const struct ccc_io	*cio   = ccc_env_io(env);
 	int			 result;
 
-	ENTRY;
 	/*
 	 * Work around DLM peculiarity: it assumes that glimpse
 	 * (LDLM_FL_HAS_INTENT) lock is always LCK_PR, and returns reads lock
@@ -642,7 +634,7 @@ int ccc_lock_fits_into(const struct lu_env *env,
 		result = lock->cll_state >= CLS_ENQUEUED;
 	else
 		result = 1;
-	RETURN(result);
+	return result;
 }
 
 /**
@@ -655,7 +647,6 @@ void ccc_lock_state(const struct lu_env *env,
 		    enum cl_lock_state state)
 {
 	struct cl_lock *lock = slice->cls_lock;
-	ENTRY;
 
 	/*
 	 * Refresh inode attributes when the lock is moving into CLS_HELD
@@ -682,7 +673,6 @@ void ccc_lock_state(const struct lu_env *env,
 		    lock->cll_descr.cld_end == CL_PAGE_EOF)
 			cl_merge_lvb(env, inode);
 	}
-	EXIT;
 }
 
 /*****************************************************************************
@@ -707,11 +697,10 @@ int ccc_io_one_lock_index(const struct lu_env *env, struct cl_io *io,
 	struct cl_object       *obj   = io->ci_obj;
 
 	CLOBINVRNT(env, obj, ccc_object_invariant(obj));
-	ENTRY;
 
 	CDEBUG(D_VFSTRACE, "lock: %d [%lu, %lu]\n", mode, start, end);
 
-	memset(&cio->cui_link, 0, sizeof cio->cui_link);
+	memset(&cio->cui_link, 0, sizeof(cio->cui_link));
 
 	if (cio->cui_fd && (cio->cui_fd->fd_flags & LL_FILE_GROUP_LOCKED)) {
 		descr->cld_mode = CLM_GROUP;
@@ -725,37 +714,18 @@ int ccc_io_one_lock_index(const struct lu_env *env, struct cl_io *io,
 	descr->cld_enq_flags = enqflags;
 
 	cl_io_lock_add(env, io, &cio->cui_link);
-	RETURN(0);
+	return 0;
 }
 
 void ccc_io_update_iov(const struct lu_env *env,
 		       struct ccc_io *cio, struct cl_io *io)
 {
-	int i;
 	size_t size = io->u.ci_rw.crw_count;
 
-	cio->cui_iov_olen = 0;
-	if (!cl_is_normalio(env, io) || cio->cui_tot_nrsegs == 0)
+	if (!cl_is_normalio(env, io) || cio->cui_iter == NULL)
 		return;
 
-	for (i = 0; i < cio->cui_tot_nrsegs; i++) {
-		struct iovec *iv = &cio->cui_iov[i];
-
-		if (iv->iov_len < size)
-			size -= iv->iov_len;
-		else {
-			if (iv->iov_len > size) {
-				cio->cui_iov_olen = iv->iov_len;
-				iv->iov_len = size;
-			}
-			break;
-		}
-	}
-
-	cio->cui_nrsegs = i + 1;
-	LASSERTF(cio->cui_tot_nrsegs >= cio->cui_nrsegs,
-		 "tot_nrsegs: %lu, nrsegs: %lu\n",
-		 cio->cui_tot_nrsegs, cio->cui_nrsegs);
+	iov_iter_truncate(cio->cui_iter, size);
 }
 
 int ccc_io_one_lock(const struct lu_env *env, struct cl_io *io,
@@ -786,30 +756,7 @@ void ccc_io_advance(const struct lu_env *env,
 	if (!cl_is_normalio(env, io))
 		return;
 
-	LASSERT(cio->cui_tot_nrsegs >= cio->cui_nrsegs);
-	LASSERT(cio->cui_tot_count  >= nob);
-
-	cio->cui_iov	+= cio->cui_nrsegs;
-	cio->cui_tot_nrsegs -= cio->cui_nrsegs;
-	cio->cui_tot_count  -= nob;
-
-	/* update the iov */
-	if (cio->cui_iov_olen > 0) {
-		struct iovec *iv;
-
-		cio->cui_iov--;
-		cio->cui_tot_nrsegs++;
-		iv = &cio->cui_iov[0];
-		if (io->ci_continue) {
-			iv->iov_base += iv->iov_len;
-			LASSERT(cio->cui_iov_olen > iv->iov_len);
-			iv->iov_len = cio->cui_iov_olen - iv->iov_len;
-		} else {
-			/* restore the iov_len, in case of restart io. */
-			iv->iov_len = cio->cui_iov_olen;
-		}
-		cio->cui_iov_olen = 0;
-	}
+	iov_iter_reexpand(cio->cui_iter, cio->cui_tot_count  -= nob);
 }
 
 /**
@@ -973,7 +920,7 @@ void ccc_req_attr_set(const struct lu_env *env,
 	       JOBSTATS_JOBID_SIZE);
 }
 
-const struct cl_req_operations ccc_req_ops = {
+static const struct cl_req_operations ccc_req_ops = {
 	.cro_attr_set   = ccc_req_attr_set,
 	.cro_completion = ccc_req_completion
 };
@@ -986,11 +933,9 @@ int cl_setattr_ost(struct inode *inode, const struct iattr *attr,
 	int	    result;
 	int	    refcheck;
 
-	ENTRY;
-
 	env = cl_env_get(&refcheck);
 	if (IS_ERR(env))
-		RETURN(PTR_ERR(env));
+		return PTR_ERR(env);
 
 	io = ccc_env_thread_io(env);
 	io->ci_obj = cl_i2info(inode)->lli_clob;
@@ -1018,8 +963,14 @@ again:
 	cl_io_fini(env, io);
 	if (unlikely(io->ci_need_restart))
 		goto again;
+	/* HSM import case: file is released, cannot be restored
+	 * no need to fail except if restore registration failed
+	 * with -ENODATA */
+	if (result == -ENODATA && io->ci_restore_needed &&
+	    io->ci_result != -ENODATA)
+		result = 0;
 	cl_env_put(env, &refcheck);
-	RETURN(result);
+	return result;
 }
 
 /*****************************************************************************
@@ -1166,7 +1117,7 @@ int cl_file_inode_init(struct inode *inode, struct lustre_md *md)
 			 * locked by I_NEW bit.
 			 */
 			lli->lli_clob = clob;
-			lli->lli_has_smd = md->lsm != NULL;
+			lli->lli_has_smd = lsm_has_objects(md->lsm);
 			lu_object_ref_add(&clob->co_lu, "inode", inode);
 		} else
 			result = PTR_ERR(clob);
@@ -1202,14 +1153,14 @@ static void cl_object_put_last(struct lu_env *env, struct cl_object *obj)
 
 		bkt = lu_site_bkt_from_fid(site, &header->loh_fid);
 
-		init_waitqueue_entry_current(&waiter);
+		init_waitqueue_entry(&waiter, current);
 		add_wait_queue(&bkt->lsb_marche_funebre, &waiter);
 
 		while (1) {
 			set_current_state(TASK_UNINTERRUPTIBLE);
 			if (atomic_read(&header->loh_ref) == 1)
 				break;
-			waitq_wait(&waiter, TASK_UNINTERRUPTIBLE);
+			schedule();
 		}
 
 		set_current_state(TASK_RUNNING);
@@ -1284,9 +1235,9 @@ __u16 ll_dirent_type_get(struct lu_dirent *ent)
 __u64 cl_fid_build_ino(const struct lu_fid *fid, int api32)
 {
 	if (BITS_PER_LONG == 32 || api32)
-		RETURN(fid_flatten32(fid));
+		return fid_flatten32(fid);
 	else
-		RETURN(fid_flatten(fid));
+		return fid_flatten(fid);
 }
 
 /**
@@ -1295,15 +1246,14 @@ __u64 cl_fid_build_ino(const struct lu_fid *fid, int api32)
 __u32 cl_fid_build_gen(const struct lu_fid *fid)
 {
 	__u32 gen;
-	ENTRY;
 
 	if (fid_is_igif(fid)) {
 		gen = lu_igif_gen(fid);
-		RETURN(gen);
+		return gen;
 	}
 
 	gen = (fid_flatten(fid) >> 32);
-	RETURN(gen);
+	return gen;
 }
 
 /* lsm is unreliable after hsm implementation as layout can be changed at

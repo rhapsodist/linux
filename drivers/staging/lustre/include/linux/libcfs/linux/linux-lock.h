@@ -52,7 +52,7 @@
  * IMPORTANT !!!!!!!!
  *
  * All locks' declaration are not guaranteed to be initialized,
- * Althought some of they are initialized in Linux. All locks
+ * although some of them are initialized in Linux. All locks
  * declared by CFS_DECL_* should be initialized explicitly.
  */
 
@@ -66,7 +66,7 @@
  * - spin_unlock(x)
  * - spin_unlock_bh(x)
  * - spin_trylock(x)
- * - spin_is_locked(x)
+ * - assert_spin_locked(x)
  *
  * - spin_lock_irq(x)
  * - spin_lock_irqsave(x, f)

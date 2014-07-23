@@ -32,7 +32,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <linux/init.h>
 
 #include <asm/asm.h>
 #include <asm/asm-offsets.h>
@@ -55,8 +54,9 @@
 	.set	noat
 	.set	arch=xlr		/* for mfcr/mtcr, XLR is sufficient */
 
-FEXPORT(xlp_boot_core0_siblings)	/* "Master" cpu starts from here */
-	dmtc0	sp, $4, 2		/* SP saved in UserLocal */
+/* Called by the boot cpu to wake up its sibling threads */
+NESTED(xlp_boot_core0_siblings, PT_SIZE, sp)
+	/* CPU register contents lost when enabling threads, save them first */
 	SAVE_ALL
 	sync
 	/* find the location to which nlm_boot_siblings was relocated */
@@ -66,11 +66,13 @@ FEXPORT(xlp_boot_core0_siblings)	/* "Master" cpu starts from here */
 	dsubu	t2, t1
 	daddu	t2, t0
 	/* call it */
-	jr	t2
+	jalr	t2
 	nop
-	/* not reached */
+	RESTORE_ALL
+	jr	ra
+	nop
+END(xlp_boot_core0_siblings)
 
-	__CPUINIT
 NESTED(nlm_boot_secondary_cpus, 16, sp)
 	/* Initialize CP0 Status */
 	move	t1, zero
@@ -94,15 +96,13 @@ NESTED(nlm_boot_secondary_cpus, 16, sp)
 	jr	t0
 	nop
 END(nlm_boot_secondary_cpus)
-	__FINIT
 
 /*
  * In case of RMIboot bootloader which is used on XLR boards, the CPUs
  * be already woken up and waiting in bootloader code.
  * This will get them out of the bootloader code and into linux. Needed
- *  because the bootloader area will be taken and initialized by linux.
+ * because the bootloader area will be taken and initialized by linux.
  */
-	__CPUINIT
 NESTED(nlm_rmiboot_preboot, 16, sp)
 	mfc0	t0, $15, 1	/* read ebase */
 	andi	t0, 0x1f	/* t0 has the processor_id() */
@@ -136,8 +136,8 @@ NESTED(nlm_rmiboot_preboot, 16, sp)
 	or	t1, t2, v1	/* put in new value */
 	mtcr	t1, t0		/* update core control */
 
+	/* wait for NMI to hit */
 1:	wait
 	b	1b
 	nop
 END(nlm_rmiboot_preboot)
-	__FINIT

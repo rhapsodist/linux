@@ -30,10 +30,9 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 
-#define MAX_PWMS 1024
+#include <dt-bindings/pwm/pwm.h>
 
-/* flags in the third cell of the DT PWM specifier */
-#define PWM_SPEC_POLARITY	(1 << 0)
+#define MAX_PWMS 1024
 
 static DEFINE_MUTEX(pwm_lookup_lock);
 static LIST_HEAD(pwm_lookup_list);
@@ -149,7 +148,7 @@ of_pwm_xlate_with_flags(struct pwm_chip *pc, const struct of_phandle_args *args)
 
 	pwm_set_period(pwm, args->args[1]);
 
-	if (args->args[2] & PWM_SPEC_POLARITY)
+	if (args->args[2] & PWM_POLARITY_INVERTED)
 		pwm_set_polarity(pwm, PWM_POLARITY_INVERSED);
 	else
 		pwm_set_polarity(pwm, PWM_POLARITY_NORMAL);
@@ -662,10 +661,16 @@ struct pwm_device *pwm_get(struct device *dev, const char *con_id)
 		}
 	}
 
+	mutex_unlock(&pwm_lookup_lock);
+
 	if (chip)
 		pwm = pwm_request_from_chip(chip, index, con_id ?: dev_id);
+	if (IS_ERR(pwm))
+		return pwm;
 
-	mutex_unlock(&pwm_lookup_lock);
+	pwm_set_period(pwm, p->period);
+	pwm_set_polarity(pwm, p->polarity);
+
 
 	return pwm;
 }
@@ -809,12 +814,12 @@ static void pwm_dbg_show(struct pwm_chip *chip, struct seq_file *s)
 		seq_printf(s, " pwm-%-3d (%-20.20s):", i, pwm->label);
 
 		if (test_bit(PWMF_REQUESTED, &pwm->flags))
-			seq_printf(s, " requested");
+			seq_puts(s, " requested");
 
 		if (test_bit(PWMF_ENABLED, &pwm->flags))
-			seq_printf(s, " enabled");
+			seq_puts(s, " enabled");
 
-		seq_printf(s, "\n");
+		seq_puts(s, "\n");
 	}
 }
 

@@ -43,12 +43,9 @@ except maybe the 6514.
 
  */
 
-#define DEBUG 1
-#define DEBUG_FLAGS
-
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
-#include <linux/slab.h>
 
 #include "../comedidev.h"
 
@@ -369,28 +366,23 @@ static int ni_65xx_dio_insn_bits(struct comedi_device *dev,
 {
 	const struct ni_65xx_board *board = comedi_board(dev);
 	struct ni_65xx_private *devpriv = dev->private;
-	unsigned base_bitfield_channel;
-	const unsigned max_ports_per_bitfield = 5;
+	int base_bitfield_channel;
 	unsigned read_bits = 0;
-	unsigned j;
+	int last_port_offset = ni_65xx_port_by_channel(s->n_chan - 1);
+	int port_offset;
 
 	base_bitfield_channel = CR_CHAN(insn->chanspec);
-	for (j = 0; j < max_ports_per_bitfield; ++j) {
-		const unsigned port_offset =
-			ni_65xx_port_by_channel(base_bitfield_channel) + j;
-		const unsigned port =
-			sprivate(s)->base_port + port_offset;
-		unsigned base_port_channel;
+	for (port_offset = ni_65xx_port_by_channel(base_bitfield_channel);
+	     port_offset <= last_port_offset; port_offset++) {
+		unsigned port = sprivate(s)->base_port + port_offset;
+		int base_port_channel = port_offset * ni_65xx_channels_per_port;
 		unsigned port_mask, port_data, port_read_bits;
-		int bitshift;
-		if (port >= ni_65xx_total_num_ports(board))
+		int bitshift = base_port_channel - base_bitfield_channel;
+
+		if (bitshift >= 32)
 			break;
-		base_port_channel = port_offset * ni_65xx_channels_per_port;
 		port_mask = data[0];
 		port_data = data[1];
-		bitshift = base_port_channel - base_bitfield_channel;
-		if (bitshift >= 32 || bitshift <= -32)
-			break;
 		if (bitshift > 0) {
 			port_mask >>= bitshift;
 			port_data >>= bitshift;
@@ -435,7 +427,7 @@ static irqreturn_t ni_65xx_interrupt(int irq, void *d)
 {
 	struct comedi_device *dev = d;
 	struct ni_65xx_private *devpriv = dev->private;
-	struct comedi_subdevice *s = &dev->subdevices[2];
+	struct comedi_subdevice *s = dev->read_subdev;
 	unsigned int status;
 
 	status = readb(devpriv->mite->daq_io_addr + Change_Status);
@@ -447,7 +439,7 @@ static irqreturn_t ni_65xx_interrupt(int irq, void *d)
 	writeb(ClrEdge | ClrOverflow,
 	       devpriv->mite->daq_io_addr + Clear_Register);
 
-	comedi_buf_put(s->async, 0);
+	comedi_buf_put(s, 0);
 	s->async->events |= COMEDI_CB_EOS;
 	comedi_event(dev, s);
 	return IRQ_HANDLED;
@@ -481,7 +473,7 @@ static int ni_65xx_intr_cmdtest(struct comedi_device *dev,
 	err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
 	err |= cfc_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
 	err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, 1);
+	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
 	err |= cfc_check_trigger_arg_is(&cmd->stop_arg, 0);
 
 	if (err)
@@ -499,7 +491,6 @@ static int ni_65xx_intr_cmd(struct comedi_device *dev,
 			    struct comedi_subdevice *s)
 {
 	struct ni_65xx_private *devpriv = dev->private;
-	/* struct comedi_cmd *cmd = &s->async->cmd; */
 
 	writeb(ClrEdge | ClrOverflow,
 	       devpriv->mite->daq_io_addr + Clear_Register);
@@ -591,10 +582,9 @@ static int ni_65xx_auto_attach(struct comedi_device *dev,
 	if (ret)
 		return ret;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	devpriv->mite = mite_alloc(pcidev);
 	if (!devpriv->mite)
@@ -680,6 +670,7 @@ static int ni_65xx_auto_attach(struct comedi_device *dev,
 	s->n_chan = 1;
 	s->range_table = &range_unknown;
 	s->maxdata = 1;
+	s->len_chanlist	= 1;
 	s->do_cmdtest = ni_65xx_intr_cmdtest;
 	s->do_cmd = ni_65xx_intr_cmd;
 	s->cancel = ni_65xx_intr_cancel;
@@ -747,7 +738,7 @@ static int ni_65xx_pci_probe(struct pci_dev *dev,
 	return comedi_pci_auto_config(dev, &ni_65xx_driver, id->driver_data);
 }
 
-static DEFINE_PCI_DEVICE_TABLE(ni_65xx_pci_table) = {
+static const struct pci_device_id ni_65xx_pci_table[] = {
 	{ PCI_VDEVICE(NI, 0x1710), BOARD_PXI6509 },
 	{ PCI_VDEVICE(NI, 0x7085), BOARD_PCI6509 },
 	{ PCI_VDEVICE(NI, 0x7086), BOARD_PXI6528 },
